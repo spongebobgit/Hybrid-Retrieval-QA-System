@@ -328,6 +328,46 @@
             100% { transform: rotate(360deg); }
         }
 
+        /* 文件上传样式 */
+        .file-upload {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .file-upload label {
+            margin-right: 0.5rem;
+            font-size: 0.9rem;
+            color: var(--text-color);
+        }
+
+        .upload-btn {
+            background-color: var(--secondary-color);
+            color: white;
+            border: none;
+            padding: 0.3rem 0.75rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background-color 0.2s;
+            margin-right: 0.5rem;
+        }
+
+        .upload-btn:hover {
+            background-color: #5a6268;
+        }
+
+        .upload-btn:disabled {
+            background-color: #adb5bd;
+            cursor: not-allowed;
+        }
+
+        #uploadStatus {
+            font-size: 0.85rem;
+            color: var(--secondary-color);
+        }
+
         /* 响应式设计 */
         @media (max-width: 768px) {
             .chat-container {
@@ -385,6 +425,12 @@
                             <!-- 学科类别选项将动态添加 -->
                         </select>
                     </div>
+                    <div class="file-upload">
+                        <label for="fileInput">上传文件：</label>
+                        <input type="file" id="fileInput" multiple style="display: none;">
+                        <button class="upload-btn" id="uploadBtn"><i class="fas fa-upload"></i> 上传</button>
+                        <span id="uploadStatus"></span>
+                    </div>
                     <div class="input-group">
                         <textarea class="chat-input" id="chatInput" placeholder="请输入您的问题..."
                             rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
@@ -417,6 +463,9 @@
         const newSessionBtn = document.getElementById('newSessionBtn'); // 新会话按钮
         const clearHistoryBtn = document.getElementById('clearHistoryBtn'); // 清除历史按钮
         const loadingOverlay = document.getElementById('loadingOverlay'); // 加载遮罩
+        const fileInput = document.getElementById('fileInput'); // 文件输入
+        const uploadBtn = document.getElementById('uploadBtn'); // 上传按钮
+        const uploadStatus = document.getElementById('uploadStatus'); // 上传状态
 
         // API URL 前缀，根据部署环境调整
         const API_BASE_URL = ''; // 如果 API 和前端在同一域，可以留空
@@ -449,6 +498,77 @@
             }
         }
 
+        // 文件上传函数
+        function triggerFileInput() {
+            fileInput.click(); // 触发文件选择对话框
+        }
+
+        async function uploadFiles() {
+            const files = fileInput.files;
+            if (!files || files.length === 0) {
+                uploadStatus.textContent = '请先选择文件';
+                return;
+            }
+
+            // 文件大小验证
+            const MAX_FILE_SIZE = 10 * 1024 * 1024;  // 10MB 单个文件限制
+            const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB 总文件限制
+
+            let totalSize = 0;
+            for (let i = 0; i < files.length; i++) {
+                if (files[i].size > MAX_FILE_SIZE) {
+                    uploadStatus.textContent = `文件 ${files[i].name} 超过 10MB 限制`;
+                    return;
+                }
+                totalSize += files[i].size;
+            }
+
+            if (totalSize > MAX_TOTAL_SIZE) {
+                uploadStatus.textContent = `总文件大小超过 50MB 限制`;
+                return;
+            }
+
+            // 获取学科类别
+            const source = sourceFilter.value || null;
+
+            // 准备 FormData
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('files', files[i]);
+            }
+            if (source) {
+                formData.append('source', source);
+            }
+
+            // 显示上传状态
+            uploadStatus.textContent = `上传中... (${files.length} 个文件)`;
+            uploadBtn.disabled = true;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    uploadStatus.textContent = `上传成功: ${result.message}`;
+                    // 清空文件输入
+                    fileInput.value = '';
+                    // 可选：重新加载学科类别（如果有新学科）
+                    await loadSources();
+                } else {
+                    uploadStatus.textContent = `上传失败: ${result.error || '未知错误'}`;
+                }
+            } catch (error) {
+                console.error('上传文件错误:', error);
+                uploadStatus.textContent = `上传失败: ${error.message}`;
+            } finally {
+                uploadBtn.disabled = false;
+            }
+        }
+
         // 页面加载完成后执行
         document.addEventListener('DOMContentLoaded', async () => {
             // 创建新会话
@@ -468,6 +588,8 @@
 
             newSessionBtn.addEventListener('click', createNewSession); // 新会话按钮点击事件
             clearHistoryBtn.addEventListener('click', clearHistory); // 清除历史按钮点击事件
+            uploadBtn.addEventListener('click', triggerFileInput); // 上传按钮点击事件
+            fileInput.addEventListener('change', uploadFiles); // 文件选择变化事件
         });
 
         // 创建新会话

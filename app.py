@@ -270,6 +270,34 @@ async def upload_files(
                 content={"error": f"无效的学科类别。有效类别: {valid_sources}"}
             )
 
+        # 文件大小限制验证
+        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB 单个文件限制
+        MAX_TOTAL_SIZE = 50 * 1024 * 1024  # 50MB 总文件限制
+
+        logger.info(f"开始文件大小验证，文件数量: {len(files)}")
+        total_size = 0
+        for uploaded_file in files:
+            # 获取文件大小
+            uploaded_file.file.seek(0, 2)  # 移动到文件末尾
+            file_size = uploaded_file.file.tell()
+            uploaded_file.file.seek(0)  # 回到文件开头
+
+            # 检查单个文件大小
+            if file_size > MAX_FILE_SIZE:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": f"文件 {uploaded_file.filename} 超过 {MAX_FILE_SIZE//(1024*1024)}MB 限制"}
+                )
+
+            total_size += file_size
+
+        # 检查总文件大小
+        if total_size > MAX_TOTAL_SIZE:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"总文件大小超过 {MAX_TOTAL_SIZE//(1024*1024)}MB 限制"}
+            )
+
         # 准备日志信息
         if not files:
             return JSONResponse(

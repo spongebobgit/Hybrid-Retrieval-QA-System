@@ -40,6 +40,8 @@ class IntegratedQASystem:
         self.rag_system = RAGSystem(self.vector_store, self.call_dashscope)
         # 初始化对话历史表，用于存储会话记录
         self.init_conversation_table()
+        # 初始化上传日志表，用于记录文件上传操作
+        self.init_upload_logs_table()
 
     def init_conversation_table(self):
         """初始化MySQL中的conversations表，用于存储对话历史"""
@@ -66,6 +68,259 @@ class IntegratedQASystem:
             self.logger.error(f"初始化对话历史表失败: {e}")
             # 抛出异常，终止初始化
             raise
+
+    def init_upload_logs_table(self):
+        """初始化MySQL中的upload_logs表，用于存储文件上传日志"""
+        try:
+            # 确保数据库连接有效
+            self.mysql_client.ensure_connection()
+            # 创建 upload_logs 表
+            self.mysql_client.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS upload_logs (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    filename VARCHAR(255) NOT NULL,
+                    source VARCHAR(50) NOT NULL,
+                    document_count INT DEFAULT 0,
+                    status ENUM('processing', 'success', 'failed') DEFAULT 'processing',
+                    start_time DATETIME NOT NULL,
+                    end_time DATETIME NULL,
+                    error_message TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_source (source),
+                    INDEX idx_status (status),
+                    INDEX idx_created_at (created_at)
+                )
+            """)
+            # 提交数据库事务
+            self.mysql_client.connection.commit()
+            # 记录表初始化成功的日志
+            self.logger.info("上传日志表初始化成功")
+        except pymysql.MySQLError as e:
+            # 记录表初始化失败的错误日志
+            self.logger.error(f"初始化上传日志表失败: {e}")
+            # 抛出异常，终止初始化
+            raise
+
+    # ========== 上传日志管理方法 ==========
+
+    def log_upload_start(self, filename: str, source: str) -> int:
+        """记录上传开始，返回日志ID"""
+        try:
+            self.mysql_client.ensure_connection()
+            import datetime
+            start_time = datetime.datetime.now()
+
+            self.mysql_client.cursor.execute("""
+                INSERT INTO upload_logs (filename, source, status, start_time)
+                VALUES (%s, %s, 'processing', %s)
+            """, (filename, source, start_time))
+
+            self.mysql_client.connection.commit()
+            log_id = self.mysql_client.cursor.lastrowid
+            self.logger.info(f"上传开始记录，日志ID: {log_id}, 文件: {filename}, 学科: {source}")
+            return log_id
+        except pymysql.MySQLError as e:
+            self.logger.error(f"记录上传开始失败: {e}")
+            self.mysql_client.connection.rollback()
+            raise
+
+    def log_upload_complete(self, log_id: int, document_count: int):
+        """记录上传完成"""
+        try:
+            self.mysql_client.ensure_connection()
+            import datetime
+            end_time = datetime.datetime.now()
+
+            self.mysql_client.cursor.execute("""
+                UPDATE upload_logs
+                SET status = 'success', end_time = %s, document_count = %s
+                WHERE id = %s
+            """, (end_time, document_count, log_id))
+
+            self.mysql_client.connection.commit()
+            self.logger.info(f"上传完成记录，日志ID: {log_id}, 文档数: {document_count}")
+        except pymysql.MySQLError as e:
+            self.logger.error(f"记录上传完成失败: {e}")
+            self.mysql_client.connection.rollback()
+            raise
+
+    def log_upload_failed(self, log_id: int, error_message: str):
+        """记录上传失败"""
+        try:
+            self.mysql_client.ensure_connection()
+            import datetime
+            end_time = datetime.datetime.now()
+
+            self.mysql_client.cursor.execute("""
+                UPDATE upload_logs
+                SET status = 'failed', end_time = %s, error_message = %s
+                WHERE id = %s
+            """, (end_time, error_message, log_id))
+
+            self.mysql_client.connection.commit()
+            self.logger.info(f"上传失败记录，日志ID: {log_id}, 错误: {error_message}")
+        except pymysql.MySQLError as e:
+            self.logger.error(f"记录上传失败失败: {e}")
+            self.mysql_client.connection.rollback()
+            raise
+
+    def get_upload_logs(self, source: str = None, limit: int = 50) -> list:
+        """获取上传日志"""
+        try:
+            self.mysql_client.ensure_connection()
+
+            if source:
+                self.mysql_client.cursor.execute("""
+                    SELECT id, filename, source, document_count, status,
+                           start_time, end_time, error_message, created_at
+                    FROM upload_logs
+                    WHERE source = %s
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                """, (source, limit))
+            else:
+                self.mysql_client.cursor.execute("""
+                    SELECT id, filename, source, document_count, status,
+                           start_time, end_time, error_message, created_at
+                    FROM upload_logs
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                """, (limit,))
+
+            # 获取列名
+            columns = [desc[0] for desc in self.mysql_client.cursor.description]
+            rows = self.mysql_client.cursor.fetchall()
+
+            # 转换为字典列表
+            logs = []
+            for row in rows:
+                log_dict = dict(zip(columns, row))
+                # 将datetime对象转换为字符串
+                for key in ['start_time', 'end_time', 'created_at']:
+                    if log_dict.get(key) and hasattr(log_dict[key], 'isoformat'):
+                        log_dict[key] = log_dict[key].isoformat()
+                logs.append(log_dict)
+
+            return logs
+        except pymysql.MySQLError as e:
+            self.logger.error(f"获取上传日志失败: {e}")
+            return []
+
+    def delete_upload_log(self, log_id: int) -> bool:
+        """删除上传日志记录"""
+        try:
+            self.mysql_client.ensure_connection()
+            self.mysql_client.cursor.execute("DELETE FROM upload_logs WHERE id = %s", (log_id,))
+            self.mysql_client.connection.commit()
+            deleted = self.mysql_client.cursor.rowcount > 0
+            if deleted:
+                self.logger.info(f"删除上传日志记录，ID: {log_id}")
+            return deleted
+        except pymysql.MySQLError as e:
+            self.logger.error(f"删除上传日志失败: {e}")
+            self.mysql_client.connection.rollback()
+            return False
+
+    def rollback_upload(self, log_id: int) -> dict:
+        """
+        回滚指定上传操作
+
+        根据上传日志的时间范围，删除对应时间段内上传的文档
+        """
+        try:
+            self.mysql_client.ensure_connection()
+
+            # 获取上传日志信息
+            self.mysql_client.cursor.execute("""
+                SELECT filename, source, start_time, end_time, document_count
+                FROM upload_logs
+                WHERE id = %s AND status = 'success'
+            """, (log_id,))
+
+            log_info = self.mysql_client.cursor.fetchone()
+            if not log_info:
+                return {
+                    "success": False,
+                    "message": "日志不存在或上传未成功"
+                }
+
+            filename, source, start_time, end_time, document_count = log_info
+
+            # 如果没有结束时间，使用当前时间
+            if not end_time:
+                import datetime
+                end_time = datetime.datetime.now()
+
+            # 将时间转换为ISO格式字符串（用于Milvus过滤）
+            start_iso = start_time.isoformat() if hasattr(start_time, 'isoformat') else str(start_time)
+            end_iso = end_time.isoformat() if hasattr(end_time, 'isoformat') else str(end_time)
+
+            # 从向量存储中删除对应时间段内该学科的文档
+            vector_store = self.vector_store
+            client = vector_store.client
+            collection_name = vector_store.collection_name
+
+            # 构建过滤条件：指定学科且在时间范围内
+            filter_expr = f"source == '{source}' AND timestamp >= '{start_iso}' AND timestamp <= '{end_iso}'"
+
+            # 先查询匹配的文档数量
+            result = client.query(
+                collection_name=collection_name,
+                filter=filter_expr,
+                output_fields=["id"],
+                limit=10000
+            )
+
+            matched_count = len(result) if result else 0
+
+            if matched_count > 0:
+                # 执行删除
+                delete_result = client.delete(
+                    collection_name=collection_name,
+                    filter=filter_expr
+                )
+
+                deleted_count = delete_result.get("delete_count", 0)
+                self.logger.info(f"回滚上传成功，日志ID: {log_id}, 删除文档数: {deleted_count}")
+
+                # 更新日志状态为已回滚（添加备注）
+                self.mysql_client.cursor.execute("""
+                    UPDATE upload_logs
+                    SET error_message = CONCAT(IFNULL(error_message, ''), ' [ROLLBACK]')
+                    WHERE id = %s
+                """, (log_id,))
+                self.mysql_client.connection.commit()
+
+                return {
+                    "success": True,
+                    "message": f"成功回滚上传操作，删除了 {deleted_count} 个文档",
+                    "log_id": log_id,
+                    "source": source,
+                    "filename": filename,
+                    "deleted_documents": deleted_count,
+                    "matched_documents": matched_count
+                }
+            else:
+                self.logger.warning(f"回滚上传未找到匹配文档，日志ID: {log_id}")
+                return {
+                    "success": True,
+                    "message": "未找到需要删除的文档，可能已被删除",
+                    "log_id": log_id,
+                    "source": source,
+                    "filename": filename,
+                    "deleted_documents": 0,
+                    "matched_documents": 0
+                }
+
+        except Exception as e:
+            self.logger.error(f"回滚上传操作失败: {e}")
+            return {
+                "success": False,
+                "message": f"回滚失败: {str(e)}",
+                "log_id": log_id
+            }
+
+    # ========== 原有方法 ==========
 
     def call_dashscope(self, prompt):
         """调用DashScope API生成答案（流式输出）"""
