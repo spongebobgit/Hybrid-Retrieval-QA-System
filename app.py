@@ -18,6 +18,7 @@ from pathlib import Path
 
 # 导入现有的系统
 from new_main import IntegratedQASystem
+from base import logger
 
 # 创建应用实例
 app = FastAPI(title="问答系统API", description="集成MySQL和RAG的智能问答系统")
@@ -258,6 +259,8 @@ async def upload_files(
         source: 学科类别 (如 "ai", "java")，如果不提供则从文件名推断
         is_zip: 是否为zip压缩包，如果是则会解压后处理所有文件
     """
+    # 初始化日志ID
+    log_id = None
     try:
         # 验证学科类别
         valid_sources = qa_system.config.VALID_SOURCES
@@ -267,6 +270,26 @@ async def upload_files(
                 content={"error": f"无效的学科类别。有效类别: {valid_sources}"}
             )
 
+        # 准备日志信息
+        if not files:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "没有上传文件"}
+            )
+
+        # 构建文件名描述
+        if len(files) == 1:
+            filename = os.path.basename(files[0].filename)
+        else:
+            first_filename = os.path.basename(files[0].filename)
+            filename = f"{first_filename} 等 {len(files)} 个文件"
+
+        # 确定日志中的学科类别
+        log_source = source or "auto"
+
+        # 记录上传开始
+        log_id = qa_system.log_upload_start(filename, log_source)
+
         # 创建临时目录处理上传的文件
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -274,7 +297,9 @@ async def upload_files(
 
             # 处理每个上传的文件
             for uploaded_file in files:
-                file_path = temp_path / uploaded_file.filename
+                # 安全处理文件名，防止路径遍历
+                safe_filename = os.path.basename(uploaded_file.filename)
+                file_path = temp_path / safe_filename
 
                 # 保存上传的文件
                 with open(file_path, "wb") as f:
@@ -304,8 +329,16 @@ async def upload_files(
                     if source:
                         source_dir = temp_path / f"{source}_data"
                         source_dir.mkdir(exist_ok=True)
-                        # 移动文件到学科目录
-                        new_path = source_dir / processed_path_obj.name
+                        # 移动文件到学科目录，处理文件名冲突
+                        base_name = processed_path_obj.name
+                        new_path = source_dir / base_name
+                        counter = 1
+                        while new_path.exists():
+                            # 添加数字后缀
+                            stem = processed_path_obj.stem
+                            suffix = processed_path_obj.suffix
+                            new_path = source_dir / f"{stem}_{counter}{suffix}"
+                            counter += 1
                         shutil.move(processed_path, new_path)
                         directory_path = str(source_dir)
                     else:
@@ -313,13 +346,21 @@ async def upload_files(
                         file_stem = processed_path_obj.stem
                         source_dir = temp_path / f"{file_stem}_data"
                         source_dir.mkdir(exist_ok=True)
-                        new_path = source_dir / processed_path_obj.name
+                        # 移动文件到学科目录，处理文件名冲突
+                        base_name = processed_path_obj.name
+                        new_path = source_dir / base_name
+                        counter = 1
+                        while new_path.exists():
+                            # 添加数字后缀
+                            stem = processed_path_obj.stem
+                            suffix = processed_path_obj.suffix
+                            new_path = source_dir / f"{stem}_{counter}{suffix}"
+                            counter += 1
                         shutil.move(processed_path, new_path)
                         directory_path = str(source_dir)
 
                 # 导入文档处理模块
                 from rag_qa.core.document_processor import process_documents
-                from rag_qa.core.vector_store import VectorStore
 
                 # 处理文档
                 documents = process_documents(directory_path)
@@ -331,18 +372,198 @@ async def upload_files(
 
                 logger.info(f"从 {directory_path} 处理了 {len(documents)} 个文档块")
 
+            # 记录上传完成
+            if log_id:
+                qa_system.log_upload_complete(log_id, total_docs)
+
             return {
                 "status": "success",
                 "message": f"成功处理 {len(files)} 个文件，生成 {total_docs} 个文档块并添加到知识库",
                 "source": source or "auto",
-                "total_documents": total_docs
+                "total_documents": total_docs,
+                "log_id": log_id
             }
 
     except Exception as e:
         logger.error(f"文件上传处理失败: {e}")
+        # 记录上传失败
+        if log_id:
+            try:
+                qa_system.log_upload_failed(log_id, str(e))
+            except Exception as log_error:
+                logger.error(f"记录上传失败日志时出错: {log_error}")
+
         return JSONResponse(
             status_code=500,
             content={"error": f"文件处理失败: {str(e)}"}
+        )
+
+
+# 获取知识库统计信息
+@app.get("/api/knowledgebase/stats")
+async def get_knowledgebase_stats():
+    """获取向量存储的统计信息"""
+    try:
+        vector_store = qa_system.vector_store
+        client = vector_store.client
+        collection_name = vector_store.collection_name
+
+        # 获取集合中的文档数量
+        # 使用count_entities方法获取文档总数
+        stats = client.get_collection_stats(collection_name)
+        total_docs = stats.get("row_count", 0)
+
+        # 获取按学科分组的文档数量
+        sources_stats = {}
+        for source in qa_system.config.VALID_SOURCES:
+            try:
+                # 使用query过滤获取该学科的文档数量
+                result = client.query(
+                    collection_name=collection_name,
+                    filter=f"source == '{source}'",
+                    output_fields=["id"],
+                    limit=10000  # 设置较大限制以获取所有文档
+                )
+                count = len(result) if result else 0
+                if count > 0:
+                    sources_stats[source] = count
+            except Exception as e:
+                logger.warning(f"获取学科 {source} 统计失败: {e}")
+                continue
+
+        return {
+            "collection_name": collection_name,
+            "total_documents": total_docs,
+            "sources": sources_stats,
+            "valid_sources": qa_system.config.VALID_SOURCES
+        }
+    except Exception as e:
+        logger.error(f"获取知识库统计信息失败: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"获取统计信息失败: {str(e)}"}
+        )
+
+
+# 删除知识库中指定学科的所有文档
+@app.delete("/api/knowledgebase/{source}")
+async def delete_knowledgebase_documents(source: str):
+    """删除指定学科的所有文档"""
+    try:
+        # 验证学科类别
+        valid_sources = qa_system.config.VALID_SOURCES
+        if source not in valid_sources:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"无效的学科类别。有效类别: {valid_sources}"}
+            )
+
+        vector_store = qa_system.vector_store
+        client = vector_store.client
+        collection_name = vector_store.collection_name
+
+        # 删除指定学科的所有文档
+        result = client.delete(
+            collection_name=collection_name,
+            filter=f"source == '{source}'"
+        )
+
+        # 记录删除操作
+        logger.info(f"已删除学科 {source} 的所有文档，删除数量: {result.get('delete_count', 0)}")
+
+        return {
+            "status": "success",
+            "message": f"已删除学科 {source} 的所有文档",
+            "delete_count": result.get("delete_count", 0)
+        }
+    except Exception as e:
+        logger.error(f"删除知识库文档失败: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"删除文档失败: {str(e)}"}
+        )
+
+
+# ========== 上传日志管理 API ==========
+
+@app.get("/api/upload/logs")
+async def get_upload_logs(
+    source: Optional[str] = Query(None, description="按学科过滤"),
+    limit: int = Query(50, ge=1, le=500, description="返回日志条数限制")
+):
+    """获取上传日志记录"""
+    try:
+        logs = qa_system.get_upload_logs(source=source, limit=limit)
+        return {
+            "status": "success",
+            "logs": logs,
+            "total": len(logs)
+        }
+    except Exception as e:
+        logger.error(f"获取上传日志失败: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"获取上传日志失败: {str(e)}"}
+        )
+
+
+@app.delete("/api/upload/logs/{log_id}")
+async def delete_upload_log(log_id: int):
+    """删除上传日志记录"""
+    try:
+        deleted = qa_system.delete_upload_log(log_id)
+        if deleted:
+            return {
+                "status": "success",
+                "message": f"已删除日志记录 {log_id}"
+            }
+        else:
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"日志记录 {log_id} 不存在"}
+            )
+    except Exception as e:
+        logger.error(f"删除上传日志失败: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"删除上传日志失败: {str(e)}"}
+        )
+
+
+@app.post("/api/upload/rollback/{log_id}")
+async def rollback_upload(log_id: int):
+    """回滚指定上传操作"""
+    try:
+        result = qa_system.rollback_upload(log_id)
+
+        if result["success"]:
+            return {
+                "status": "success",
+                "message": result["message"],
+                "log_id": result.get("log_id"),
+                "source": result.get("source"),
+                "filename": result.get("filename"),
+                "deleted_documents": result.get("deleted_documents", 0),
+                "matched_documents": result.get("matched_documents", 0)
+            }
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": result["message"],
+                    "log_id": result.get("log_id")
+                }
+            )
+    except Exception as e:
+        logger.error(f"回滚上传操作失败: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"回滚操作失败: {str(e)}",
+                "log_id": log_id
+            }
         )
 
 
