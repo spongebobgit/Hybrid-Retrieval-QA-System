@@ -107,6 +107,18 @@ graph TB
 - **自动重试**：数据库连接失败时的指数退避重试
 - **数据备份**：定时备份向量库和关系数据库
 
+#### 4.4 测试驱动开发
+- **完整测试套件**：新增文件上传测试脚本 (`test_file_size_limit.py`)、完整功能测试 (`test_complete_upload.py`)，确保系统健壮性
+- **自动化测试流水线**：集成pytest测试框架，支持单元测试、集成测试、端到端测试
+- **质量门禁**：代码覆盖率 > 80%，静态代码分析，安全扫描
+- **持续集成**：GitHub Actions自动化测试，确保每次提交质量
+
+#### 4.5 面试材料与演示系统
+- **面试准备材料**：提供完整的项目面试问答 (`INTERVIEW_Q&A.md`)、技术亮点总结 (`INTERVIEW_MATERIALS.md`)
+- **演示脚本**：自动化演示脚本 (`DEMO_SCRIPT.md`)，快速展示系统核心功能
+- **项目展示**：静态网页界面 (`static/index.html`)，直观展示系统架构与特性
+- **快速上手**：新手友好型文档，降低学习曲线，方便团队协作
+
 ## 🚀 业务价值体现
 
 ### 教育场景应用价值
@@ -159,5 +171,5 @@ graph TB
 ---
 
 **技术负责人**：[spongebob]
-**项目地址**：https://github.com/spongebobgit/hybrid-retrieval-qa-system
+**项目地址**：https://github.com/spongebobgit/Hybrid-Retrieval-QA-System
 **联系方式**：xf798111@163.com

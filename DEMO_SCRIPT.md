@@ -268,8 +268,14 @@ print(f"总吞吐量: {len(times)/sum(times):.1f} QPS")
 # demo_start.sh
 #!/bin/bash
 echo "启动演示环境..."
-docker-compose -f demo/docker-compose.yml up -d
+echo "1. 安装依赖..."
+pip install -r requirments.txt
+
+echo "2. 启动服务..."
+uvicorn app:app --host 0.0.0.0 --port 8001 --reload &
 sleep 10
+
+echo "3. 准备演示数据..."
 python demo/prepare_data.py
 echo "演示环境准备完成！"
 ```

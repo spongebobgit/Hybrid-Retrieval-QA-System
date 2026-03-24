@@ -12,7 +12,6 @@
 - [技术栈](#-技术栈)
 - [快速开始](#-快速开始)
 - [API文档](#-api文档)
-- [部署指南](#-部署指南)
 - [性能指标](#-性能指标)
 - [项目结构](#-项目结构)
 - [开发指南](#-开发指南)
@@ -131,7 +130,7 @@ graph TB
 ### 1. 安装依赖
 ```bash
 # 克隆项目
-git clone https://github.com/YOUR_USERNAME/Hybrid-Retrieval-QA-System.git
+git clone https://github.com/spongebobgit/Hybrid-Retrieval-QA-System.git
 cd Hybrid-Retrieval-QA-System
 
 # 安装Python依赖
@@ -316,10 +315,14 @@ Hybrid-Retrieval-QA-System/
 │       └── App.jsx            # React组件
 ├── tests/                     # 测试文件
 │   ├── test_upload.py         # 上传功能测试
-│   └── test_complete_upload.py # 完整功能测试
+│   ├── test_complete_upload.py # 完整功能测试
+│   └── test_file_size_limit.py # 文件大小限制测试
 ├── docs/                      # 文档
 │   ├── ARCHITECTURE.md        # 架构详解
 │   └── API.md                 # API文档
+├── DEMO_SCRIPT.md             # 系统演示脚本
+├── INTERVIEW_MATERIALS.md     # 面试准备材料
+├── INTERVIEW_Q&A.md           # 面试问答集
 ├── api.py                     # REST API端点
 ├── app.py                     # FastAPI应用（含WebSocket）
 ├── new_main.py                # 集成系统主类
@@ -434,7 +437,7 @@ uvicorn app:app --reload --port 8001
 
 ## 📞 联系与支持
 
-- **问题反馈**：[GitHub Issues](https://github.com/YOUR_USERNAME/Hybrid-Retrieval-QA-System/issues)
+- **问题反馈**：[GitHub Issues](https://github.com/spongebobgit/Hybrid-Retrieval-QA-System/issues)
 - **功能请求**：通过Issue模板提交
 - **安全漏洞**：请私密报告
 
