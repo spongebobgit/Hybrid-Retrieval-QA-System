@@ -105,3 +105,4 @@ rag_qa/samples/
 config.ini
 .env
 *.local
+memory/
