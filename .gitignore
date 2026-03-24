@@ -87,3 +87,16 @@ temp/
 # Generated lock files in tool subdirectories
 .opencode/package-lock.json
 .opencode/node_modules/
+
+# Model files (large binary files)
+rag_qa/models/
+rag_qa/nlp_bert_document-segmentation_chinese-base/
+rag_qa/core/bert_query_classifier/
+rag_qa/rag_assesment/
+
+# Dataset files (if large)
+# mysql_qa/data/JP学科知识问答.csv  # 136K, can be included
+# rag_qa/data/  # 1.8M, can be included
+
+# Sample files (optional)
+rag_qa/samples/

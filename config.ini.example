@@ -1,0 +1,45 @@
+# MySQL 配置（使用环境变量或修改为你的配置）
+[mysql]
+host = ${MYSQL_HOST:-localhost}
+user = ${MYSQL_USER:-root}
+password = ${MYSQL_PASSWORD:-your_mysql_password_here}
+port = ${MYSQL_PORT:-3306}
+database = ${MYSQL_DATABASE:-subjects_kg}
+
+# Redis 配置
+[redis]
+host = ${REDIS_HOST:-localhost}
+port = ${REDIS_PORT:-6379}
+password = ${REDIS_PASSWORD:-your_redis_password_here}
+db = ${REDIS_DB:-0}
+
+# Milvus 配置
+[milvus]
+host = ${MILVUS_HOST:-localhost}
+port = ${MILVUS_PORT:-19530}
+# 记得创建这个表
+database_name = ${MILVUS_DATABASE:-itcast}
+collection_name = ${MILVUS_COLLECTION:-edurag_final}
+
+# LLM 配置
+[llm]
+model = ${LLM_MODEL:-qwen-plus}
+dashscope_api_key = ${DASHSCOPE_API_KEY:-your_dashscope_api_key_here}
+dashscope_base_url = ${DASHSCOPE_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+
+# 检索参数配置
+[retrieval]
+parent_chunk_size = 1200
+child_chunk_size = 300
+chunk_overlap = 50
+retrieval_k = 5
+candidate_m = 2
+
+# 日志配置
+[logger]
+log_file = logs/app.log
+
+# 应用配置
+[app]
+valid_sources = ["ai", "java", "test", "ops", "bigdata"]
+customer_service_phone = ${CUSTOMER_SERVICE_PHONE:-your_phone_number_here}

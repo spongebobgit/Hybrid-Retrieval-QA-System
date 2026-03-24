@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile rag_qa/rag_main.py)"
+    ]
+  }
+}

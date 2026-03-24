@@ -26,7 +26,7 @@ The project is organized into several core components:
 - **skills/** - Workflow definitions and domain knowledge (coding standards, patterns, testing)
 - **commands/** - Slash commands invoked by users (/tdd, /plan, /e2e, etc.)
 - **hooks/** - Trigger-based automations (session persistence, pre/post-tool hooks)
-- **rules/** - Always-follow guidelines (security, coding style, testing requirements)
+- **rules/** - Always-follow guidelines 把(security, coding style, testing requirements)
 - **mcp-configs/** - MCP server configurations for external integrations
 - **scripts/** - Cross-platform Node.js utilities for hooks and setup
 - **tests/** - Test suite for scripts and utilities
