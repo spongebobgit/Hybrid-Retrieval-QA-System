@@ -100,3 +100,8 @@ rag_qa/rag_assesment/
 
 # Sample files (optional)
 rag_qa/samples/
+
+# Configuration files (keep templates only, exclude real configs)
+config.ini
+.env
+*.local
